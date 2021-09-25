@@ -1,5 +1,5 @@
 {
-    "name": "masum-nishat/xmpp",
+    "name": "php-push/xmpp",
     "license": "MIT",
     "description": "XMPP php library for push notification, live app, server to server live data transfer etc.",
     "keywords": ["library", "xmpp", "php", "notification", "mn", "live"],
