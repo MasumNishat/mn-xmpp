@@ -1,0 +1,27 @@
+{
+    "name": "mn/xmpp",
+    "license": "MIT",
+    "description": "XMPP php library for push notification, live app, server to server live data transfer etc.",
+    "keywords": ["library", "xmpp", "php", "notification", "mn", "live"],
+    "homepage": "https://github.com/MasumNishat/mn-xmpp",
+    "authors": [
+        {
+            "name": "Al Masum Nishat",
+            "homepage": "https://github.com/MasumNishat/",
+            "role": "Developer"
+        }
+    ],
+    "require": {
+        "php": "^8.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "MN\\XMPP\\Auth\\": "Auth/",
+            "MN\\XMPP\\Core\\": "Core/",
+            "MN\\XMPP\\Errors\\": "Errors/",
+            "MN\\XMPP\\Extensions\\": "Extensions/",
+            "MN\\XMPP\\Helpers\\": "Helpers/",
+            "MN\\XMPP\\Interfaces\\": "Interfaces/"
+        }
+    }
+}
