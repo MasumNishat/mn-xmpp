@@ -1,12 +1,14 @@
 <?php
-namespace MN\XMPP\Interface;
+namespace PhpPush\XMPP\Interfaces;
+
+use PhpPush\XMPP\Core\LaravelXMPPConnectionManager;
 
 interface XMPPAuth {
     /**
-     * @param XMPPConnectionManager $XMPPConnectionManager
+     * @param LaravelXMPPConnectionManager $connection
      * @return XMPPAuth
      */
-    public static function attach(XMPPConnectionManager $XMPPConnectionManager): XMPPAuth;
+    public static function attach(LaravelXMPPConnectionManager $connection): XMPPAuth;
 
     /**
      * @param string $method

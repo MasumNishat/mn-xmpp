@@ -1,6 +1,7 @@
 {
     "name": "php-push/xmpp",
     "license": "MIT",
+    "type": "library",
     "description": "XMPP php library for push notification, live app, server to server live data transfer etc.",
     "keywords": ["library", "xmpp", "php", "notification", "mn", "live"],
     "homepage": "https://github.com/MasumNishat/mn-xmpp",
@@ -16,12 +17,15 @@
     },
     "autoload": {
         "psr-4": {
-            "MN\\XMPP\\Auth\\": "Auth/",
-            "MN\\XMPP\\Core\\": "Core/",
-            "MN\\XMPP\\Errors\\": "Errors/",
-            "MN\\XMPP\\Extensions\\": "Extensions/",
-            "MN\\XMPP\\Helpers\\": "Helpers/",
-            "MN\\XMPP\\Interfaces\\": "Interfaces/"
+            "PhpPush\\XMPP\\Auth\\": "Auth/",
+            "PhpPush\\XMPP\\Core\\": "Core/",
+            "PhpPush\\XMPP\\Errors\\": "Errors/",
+            "PhpPush\\XMPP\\Extensions\\": "Extensions/",
+            "PhpPush\\XMPP\\Helpers\\": "Helpers/",
+            "PhpPush\\XMPP\\Interfaces\\": "Interfaces/",
+            "PhpPush\\XMPP\\Laravel\\": "Laravel/"
         }
-    }
+    },
+    "prefer-stable": true,
+    "minimum-stability": "dev"
 }

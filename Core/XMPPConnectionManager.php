@@ -1,5 +1,9 @@
 <?php
-namespace MN\XMPP\Core;
+namespace PhpPush\XMPP\Core;
+
+use PhpPush\XMPP\Extensions\XEP0030;
+use PhpPush\XMPP\Helpers\XMPP_XML;
+use PhpPush\XMPP\Interfaces\XMPPExtension;
 
 class XMPPConnectionManager
 {

@@ -1,5 +1,11 @@
 <?php
-namespace MN\XMPP\Core;
+namespace PhpPush\XMPP\Core;
+
+use Exception;
+use PhpPush\XMPP\Errors\XMPPError;
+use PhpPush\XMPP\Extensions\XEP0199;
+use PhpPush\XMPP\Helpers\XMPP_XML;
+use PhpPush\XMPP\Interfaces\XMPPServerOptions;
 
 class XMPPServer
 {

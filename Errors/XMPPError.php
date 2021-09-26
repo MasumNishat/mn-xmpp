@@ -1,5 +1,5 @@
 <?php
-namespace MN\XMPP\Errors;
+namespace PhpPush\XMPP\Errors;
 
 class XMPPError
 {

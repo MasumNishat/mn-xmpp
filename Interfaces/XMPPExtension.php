@@ -1,30 +1,29 @@
 <?php
-namespace MN\XMPP\Interface;
+namespace PhpPush\XMPP\Interfaces;
+
+use PhpPush\XMPP\Core\LaravelXMPPConnectionManager;
+use PhpPush\XMPP\Core\XMPPConnectionManager;
 
 interface XMPPExtension
 {
     /**
-     * @param XMPPConnectionManager $XMPPConnectionManager
-     */
-    public static function init(XMPPConnectionManager $XMPPConnectionManager): void;
-    /**
      * @return string
      */
-    public static function extension(): string;
+    public function extension(): string;
 
     /**
      * @return string
      */
-    public static function name(): string;
+    public function name(): string;
 
     /**
      * @return array
      */
-    public static function ns(): array;
+    public function ns(): array;
 
-    /**
-     * @param XMPPConnectionManager $XMPPConnectionManager
-     */
-    public static function XMPPConnectionManager(XMPPConnectionManager $XMPPConnectionManager): void;
-
+    public function onBeforeWrite(string $xml);
+    public function onAfterWrite(string $xml);
+    public function onRead(string $response);
+    public function connect(LaravelXMPPConnectionManager $connection): ?XMPPExtension;
+    public static function getInstance(): XMPPExtension;
 }

@@ -1,33 +1,44 @@
 <?php
-namespace MN\XMPP\Auth;
+namespace PhpPush\XMPP\Auth;
+
+use Closure;
+use PhpPush\XMPP\Core\LaravelXMPPConnectionManager;
+use PhpPush\XMPP\Helpers\Functions;
+use PhpPush\XMPP\Helpers\XMPP_XML;
+use PhpPush\XMPP\Interfaces\XMPPAuth;
 
 class Scram implements XMPPAuth {
 
-    private static XMPPConnectionManager $XMPPConnectionManager;
+    private LaravelXMPPConnectionManager $connection;
     private static ?Scram $instance = null;
     private Closure $hash;
     private Closure $hmac;
+    private mixed $saltedPassword;
+    private string $gs2_header;
+    private string $first_message_bare;
+    private string $cnonce;
+    private string $authMessage;
 
     /**
      * gets the instance via lazy initialization (created on first usage)
      */
-    public static function attach(XMPPConnectionManager $XMPPConnectionManager): Scram
+    public static function attach(LaravelXMPPConnectionManager $connection): Scram
     {
         if (Scram::$instance === null) {
-            Scram::$instance = new Scram($XMPPConnectionManager);
+            Scram::$instance = new Scram($connection);
         }
         return Scram::$instance;
     }
-    private function __construct(XMPPConnectionManager $XMPPConnectionManager) {
-        self::$XMPPConnectionManager = $XMPPConnectionManager;
+    private function __construct(LaravelXMPPConnectionManager $connection) {
+        $this->connection = $connection;
     }
+
     function auth(string $method = ''): bool
     {
-        // Though I could be strict, I will actually also accept the naming used in the PHP core hash framework.
-        // For instance "sha1" is accepted, while the registered hash name should be "SHA-1".
         $hash = strtolower($method);
 //        $hash = str_replace("-plus", "", strtolower($method));
-        $hashes = array('md2' => 'md2',
+        $hashes = [
+            'md2' => 'md2',
             'md5' => 'md5',
             'sha-1' => 'sha1',
             'sha1' => 'sha1',
@@ -38,8 +49,8 @@ class Scram implements XMPPAuth {
             'sha-384' => 'sha384',
             'sha384' => 'sha384',
             'sha-512' => 'sha512',
-            'sha512' => 'sha512');
-        $f = fn($x) => [$x];;
+            'sha512' => 'sha512'
+        ];
 
         if (function_exists('hash_hmac') && isset($hashes[$hash]))
         {
@@ -57,26 +68,28 @@ class Scram implements XMPPAuth {
             $this->hmac = fn($key,$str,$raw) => Functions::HMAC_SHA1($key,$str,$raw);
         }
         else {
-
+            $this->connection->getClientListener()->onError(['System Error: Hash function not found']);
         }
 
-        $req = base64_encode($this->getResponse(self::$XMPPConnectionManager->user, self::$XMPPConnectionManager->XMPPUser->getPassword()));
-        $xml = "<auth xmlns='urn:ietf:params:xml:ns:xmpp-sasl' mechanism='".self::$XMPPConnectionManager->XMPPUser->getAuthMethod()."' >$req</auth>";
-        self::$XMPPConnectionManager->XMPPServer->write($xml);
-        if (XMPP_XML::parse(self::$XMPPConnectionManager->XMPPServer->getResponse())->exist('challenge')) {
-            $challengeBase64 = strip_tags(self::$XMPPConnectionManager->XMPPServer->getResponse());
+        $req = base64_encode($this->getResponse($this->connection->getUser(), $this->connection->getPassword()));
+        $xml = "<auth xmlns='urn:ietf:params:xml:ns:xmpp-sasl' mechanism='".$this->connection->getAuthType()."' >$req</auth>";
+        $this->connection->write($xml);
+        if (XMPP_XML::parse($this->connection->getResponse())->exist('challenge')) {
+            $challengeBase64 = strip_tags($this->connection->getResponse());
             $challenge = base64_decode($challengeBase64);
-            $parsed1 = base64_encode($this->getResponse(self::$XMPPConnectionManager->user, self::$XMPPConnectionManager->XMPPUser->getPassword(), $challenge, self::$XMPPConnectionManager->jid));
-            self::$XMPPConnectionManager->XMPPServer->write("<response xmlns='urn:ietf:params:xml:ns:xmpp-sasl'>$parsed1</response>");
+            $parsed1 = base64_encode($this->getResponse($this->connection->getUser(), $this->connection->getPassword(), $challenge, $this->connection->getJid()));
+            $this->connection->write("<response xmlns='urn:ietf:params:xml:ns:xmpp-sasl'>$parsed1</response>");
         }
-        if (XMPP_XML::parse(self::$XMPPConnectionManager->XMPPServer->getResponse())->exist('success')) {
-            $outcomeBase64 = strip_tags(self::$XMPPConnectionManager->XMPPServer->getResponse());
+        if (XMPP_XML::parse($this->connection->getResponse())->exist('success')) {
+            $outcomeBase64 = strip_tags($this->connection->getResponse());
             $outcome = base64_decode($outcomeBase64);
-            var_dump($this->processOutcome($outcome));
+            if (!$this->processOutcome($outcome)) {
+                $this->connection->getClientListener()->onError(['Malformed negotiation']);
+                return false;
+            }
             return true;
         }
 
-        var_dump([$method]);
         return false;
     }
 
@@ -150,7 +163,7 @@ class Scram implements XMPPAuth {
         $this->gs2_header = $gs2_cbind_flag . (!empty($authzid)? 'a=' . $authzid : '') . ',';
 
         // I must generate a client nonce and "save" it for later comparison on second response.
-        $this->cnonce = $this->_getCnonce();
+        $this->cnonce = Functions::getCnonce();
         // XXX: in the future, when mandatory and/or optional extensions are defined in any updated RFC,
         // this message can be updated.
         $this->first_message_bare = 'n=' . $authcid . ',r=' . $this->cnonce;
@@ -204,7 +217,6 @@ class Scram implements XMPPAuth {
         $clientSignature = call_user_func($this->hmac, $storedKey, $authMessage, TRUE);
         $clientProof = $clientKey ^ $clientSignature;
         $proof = ',p=' . base64_encode($clientProof);
-
         return $final_message . $proof;
     }
 
@@ -258,30 +270,5 @@ class Scram implements XMPPAuth {
     }
 
 
-    /**
-     * Creates the client nonce for the response
-     *
-     * @return string  The cnonce value
-     * @access private
-     * @author  Richard Heyes <richard@php.net>
-     */
-    private function _getCnonce(): string
-    {
-        // TODO: I reused the nonce function from the DigestMD5 class.
-        // I should probably make this a protected function in Common.
-        if (@file_exists('/dev/urandom') && $fd = @fopen('/dev/urandom', 'r')) {
-            return base64_encode(fread($fd, 32));
 
-        } elseif (@file_exists('/dev/random') && $fd = @fopen('/dev/random', 'r')) {
-            return base64_encode(fread($fd, 32));
-
-        } else {
-            $str = '';
-            for ($i=0; $i<32; $i++) {
-                $str .= chr(mt_rand(0, 255));
-            }
-
-            return base64_encode($str);
-        }
-    }
 }

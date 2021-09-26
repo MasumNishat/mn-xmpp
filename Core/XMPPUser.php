@@ -1,5 +1,7 @@
 <?php
-namespace MN\XMPP\Core;
+namespace PhpPush\XMPP\Core;
+
+use PhpPush\XMPP\Interfaces\XMPPClientOptions;
 
 class XMPPUser
 {

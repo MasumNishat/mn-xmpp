@@ -1,31 +1,49 @@
 <?php
-namespace MN\XMPP\Extensions;
+namespace PhpPush\XMPP\Extensions;
+
+use PhpPush\XMPP\Core\ExtensionListener;
+use PhpPush\XMPP\Core\LaravelXMPPConnectionManager;
+use PhpPush\XMPP\Interfaces\XMPPExtension;
 
 class XEP0199 implements XMPPExtension
 {
-    private static XMPPConnectionManager $XMPPConnectionManager;
-    private static bool $isSupported;
-    public static bool $c2c_ping = false;
-    public static bool $c2s_ping = false;
-    public static array $serverPingID = [];
-    public static int $c2s_ping_interval = 60;
-    public static int $c2c_ping_interval = 60;
-    public static array $clientPingID = [];
-    public static int $c2s_ping_timeout = 60;
-    public static int $c2c_ping_timeout = 60;
+    private LaravelXMPPConnectionManager $connection;
+    private static ?XEP0199 $instance = null;
+    private string $lastServerConnectedAt = '';
+    private bool $isSupported;
+    public bool $c2c_ping = false;
+    public bool $c2s_ping = false;
+    public array $serverPingID = [];
+    public int $c2s_ping_interval = 60;
+    public int $c2c_ping_interval = 60;
+    public array $clientPingID = [];
+    public int $c2s_ping_timeout = 45;
+    public int $c2c_ping_timeout = 45;
 
-    public static function init(XMPPConnectionManager $XMPPConnectionManager): void
+    /**
+     * gets the instance via lazy initialization (created on first usage)
+     */
+    public static function getInstance(): XEP0199
     {
-        self::$XMPPConnectionManager = $XMPPConnectionManager;
-        if (!self::isSupported(true)) {
-            self::$XMPPConnectionManager->XMPPServer->getXMPPServerOptions()->onError([10002, 'XEP0199 not supported by server']);
+        if (XEP0199::$instance === null) {
+            XEP0199::$instance = new XEP0199();
         }
+        return XEP0199::$instance;
+    }
+
+    public function connect(LaravelXMPPConnectionManager $connection): ?XEP0199
+    {
+        $this->connection = $connection;
+        if (!self::isSupported(true)) {
+            $this->connection->getServerListener()->onError(['warning', 'XEP0199 not supported by server']);
+        }
+        return $this::$instance;
     }
 
     /**
      * @return string
      */
-    public static function extension(): string
+    public function extension(): string
     {
         return 'XEP-0199';
     }
@@ -33,7 +51,7 @@ class XEP0199 implements XMPPExtension
     /**
      * @return string
      */
-    public static function name(): string
+    public function name(): string
     {
         return 'Service Discovery';
     }
@@ -41,7 +59,7 @@ class XEP0199 implements XMPPExtension
     /**
      * @return string[]
      */
-    public static function ns(): array
+    public function ns(): array
     {
         return [
             'urn:xmpp:ping',
@@ -49,93 +67,124 @@ class XEP0199 implements XMPPExtension
     }
 
     /**
-     * @param XMPPConnectionManager $XMPPConnectionManager
-     */
-    public static function XMPPConnectionManager(XMPPConnectionManager $XMPPConnectionManager): void
-    {
-        self::$XMPPConnectionManager = $XMPPConnectionManager;
-    }
-
-    /**
      * @param bool $reload
      * @return bool
      */
-    static function isSupported(bool $reload = false): bool
+    private function isSupported(bool $reload = false): bool
     {
-        self::$isSupported = false;
+        $this->isSupported = false;
         //check if XEP0030 is loaded
-        if (self::$XMPPConnectionManager->isExtensionLoaded('XEP0030')) {
-            self::$isSupported = XEP0030::checkNS(self::ns());
-            if (!self::$isSupported && $reload) {
-                $from = self::$XMPPConnectionManager->jid ? "from='" . self::$XMPPConnectionManager->jid . "'" : '';
-                $to = "to='" . self::$XMPPConnectionManager->host . "'";
-                $xml = "<iq type='get' $from $to id='" . uniqid(rand(), true) . "'><query xmlns='http://jabber.org/protocol/disco#info'/></iq>";
-                self::$isSupported = XEP0030::checkNS(self::ns(), true, $xml);
+        $XEP0030 = ExtensionListener::getInstance()->getExtension('XEP0030');
+        if ($XEP0030) {
+            $this->isSupported = $XEP0030->checkNS($this->ns());
+            if (!$this->isSupported && $reload) {
+                $from = "from='" . $this->connection->getJid() . "'";
+                $to = "to='" . $this->connection->getHost() . "'";
+                $xml = "<iq type='get' $from $to id='" . md5(uniqid(rand(), true)) . "'><query xmlns='http://jabber.org/protocol/disco#info'/></iq>";
+                $this->isSupported = $XEP0030->checkNS($this->ns(), true, $xml);
             }
         }
-        return self::$isSupported;
+        return $this->isSupported;
     }
 
-    public static function c2c_ping(bool $value)
+    public function c2c_ping(bool $value)
     {
-        self::$c2c_ping = $value;
+        $this->c2c_ping = $value;
     }
 
-    public static function c2s_ping_interval(int $value)
+    public function c2s_ping_interval(int $value)
     {
-        self::$c2s_ping_interval = $value;
+        $this->c2s_ping_interval = $value;
     }
 
-    public static function c2c_ping_interval(int $value)
+    public function c2c_ping_interval(int $value)
     {
-        self::$c2c_ping_interval = $value;
+        $this->c2c_ping_interval = $value;
     }
 
-    public static function c2s_ping_timeout(int $value)
+    public function c2s_ping_timeout(int $value)
     {
-        self::$c2s_ping_timeout = $value;
+        $this->c2s_ping_timeout = $value;
     }
 
-    public static function c2c_ping_timeout(int $value)
+    public function c2c_ping_timeout(int $value)
     {
-        self::$c2c_ping_timeout = $value;
+        $this->c2c_ping_timeout = $value;
     }
 
-    public static function c2s_ping(bool $value)
+    public function c2s_ping(bool $value)
     {
-        self::$c2s_ping = $value;
+        $this->c2s_ping = $value;
     }
 
-    public static function pingClient(string $to)
+    public function pingClient(string $to)
     {
-        self::$clientPingID[$to]['id'] = uniqid(rand(), true);
-        self::$clientPingID[$to]['time'] = time();
-        $xml = "<iq from='" . self::$XMPPConnectionManager->jid . "' to='$to' id='" . self::$clientPingID[$to]['id'] . "' type='get'><ping xmlns='urn:xmpp:ping'/></iq>";
-        self::$XMPPConnectionManager->XMPPServer->write($xml);
+        $this->clientPingID[$to]['id'] = md5(uniqid(rand(), true));
+        $this->clientPingID[$to]['time'] = time();
+        $xml = "<iq from='" . $this->connection->getJid() . "' to='$to' id='" . $this->clientPingID[$to]['id'] . "' type='get'><ping xmlns='urn:xmpp:ping'/></iq>";
+        $this->connection->write($xml);
     }
 
-    public static function pingServer()
+    public function pingServer()
     {
-        if(!empty(self::$serverPingID)) {
-
-        }
-        self::$serverPingID['id'] = uniqid(rand(), true);
-        self::$serverPingID['time'] = time();
-        $xml = "<iq from='" . self::$XMPPConnectionManager->jid . "' to='" . self::$XMPPConnectionManager->host . "' id='" . self::$serverPingID . "' type='get'><ping xmlns='urn:xmpp:ping'/></iq>";
-        self::$XMPPConnectionManager->XMPPServer->write($xml);
-//        while ( && self::$c2s_ping_timeout<(time()-self::$serverPingID['time'])){
-//            //parse all responses
-//        }
+        $this->serverPingID['id'] = md5(uniqid(rand(), true));
+        $this->serverPingID['time'] = time();
+        $xml = "<iq from='" . $this->connection->getJid() . "' to='" . $this->connection->getHost() . "' id='" . $this->serverPingID['id'] . "' type='get'><ping xmlns='urn:xmpp:ping'/></iq>";
+        $this->connection->write($xml);
     }
-//    public static function result(string $xml) {
 
 
     /**
      * @param array $param
      */
-    public static function response(array $param)
+    public function response(array $param)
     {
         $xml = "<iq from='$param[to]' to='$param[from]' id='$param[id]' type='result'/>";
-        self::$XMPPConnectionManager->XMPPServer->write($xml);
+        $this->connection->write($xml);
+    }
+
+    public function onBeforeWrite(string $xml)
+    {
+        if ($this->c2s_ping) {
+            if(empty($this->serverPingID)) {
+                if (time()-$this->lastServerConnectedAt>=$this->c2s_ping_interval) {
+                    $this->pingServer();
+                }
+            } elseif (time()-$this->serverPingID['time'] >= $this->c2s_ping_timeout) {
+                $this->connection->getServerListener()->onError(['Server ping timeout']);
+                $this->connection->logout(true);
+            }
+        }
+    }
+
+    public function onAfterWrite(string $xml) {}
+
+    public function onRead(string $response)
+    {
+        $this->lastServerConnectedAt = time();
+        //check ping request
+        preg_match_all(
+            '/<iq
+    (?:\s+
+      (?:
+         from=["\'](?P<from>[^"\'<>]+)["\']
+        |
+         type=["\'](?P<type>[^"\'<>]+)["\']
+        |
+         to=["\'](?P<to>[^"\'<>]+)["\']
+        |
+        id=["\'](?P<id>[^"\'<>]+)["\']
+        |
+         \w+=["\'][^"\'<>]+["\']
+      )
+    )+(.*)xmlns=["\']urn:xmpp:ping["\']/ix',
+            $response, $result, PREG_PATTERN_ORDER);
+        if (isset($result['type'][0]) && $result['type'][0] == 'get') {
+            $this->response([
+                'from' => $result['from'][0],
+                'to' => $result['to'][0],
+                'id' => $result['id'][0],
+            ]);
+        }
     }
 }

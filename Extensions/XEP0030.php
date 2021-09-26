@@ -1,17 +1,35 @@
 <?php
-namespace MN\XMPP\Extensions;
+namespace PhpPush\XMPP\Extensions;
 
-class XEP0030 implements XMPPExtension
+use PhpPush\XMPP\Core\LaravelXMPPConnectionManager;
+use PhpPush\XMPP\Helpers\XMPP_XML;
+use PhpPush\XMPP\Interfaces\XMPPExtension;
+
+final class XEP0030 implements XMPPExtension
 {
-    private static XMPPConnectionManager $XMPPConnectionManager;
-    private static bool $isSupported;
-    private static array $generalSupport;
-    private static array $XMPP_NS;
+    private LaravelXMPPConnectionManager $connection;
+    private static ?XEP0030 $instance = null;
+    private array $XMPP_NS;
+    private bool $isSupported;
+    private array $generalSupport;
 
-    public static function init(XMPPConnectionManager $XMPPConnectionManager): void
+    /**
+     * gets the instance via lazy initialization (created on first usage)
+     */
+    public static function getInstance(): XEP0030
     {
-        self::$XMPPConnectionManager = $XMPPConnectionManager;
-        self::$XMPP_NS = json_decode(
+        if (XEP0030::$instance === null) {
+            var_dump("ext instance loaded");
+            XEP0030::$instance = new XEP0030();
+        }
+        return XEP0030::$instance;
+    }
+
+
+    public function connect(LaravelXMPPConnectionManager $connection): ?XEP0030
+    {
+        $this->connection = $connection;
+        $this->XMPP_NS = json_decode(
             <<<END
 [
     {
@@ -186,7 +204,7 @@ class XEP0030 implements XMPPExtension
         "support": false,
         "name": "http://jabber.org/protocol/rc",
         "xep": "XEP-0146",
-        "des": "Remote Controllling Clients"
+        "des": "Remote Controlling Clients"
     },
     {
         "support": false,
@@ -653,15 +671,17 @@ class XEP0030 implements XMPPExtension
 ]
 END
             , true);
-        if (!self::isSupported(true)) {
-            self::$XMPPConnectionManager->XMPPServer->getXMPPServerOptions()->onError([10001, 'XEP0030 not supported by server']);
+        if (!$this->isSupported(true)) {
+            $this->connection->getServerListener()->onError(['error', 'XEP0030 not supported by server which is minimum XMPP server requirement']);
+            die("Shutting down");
         }
+        return $this::$instance;
     }
 
     /**
      * @return string
      */
-    public static function extension(): string
+    public function extension(): string
     {
         return 'XEP-0030';
     }
@@ -669,7 +689,7 @@ END
     /**
      * @return string
      */
-    public static function name(): string
+    public function name(): string
     {
         return 'Service Discovery';
     }
@@ -677,7 +697,7 @@ END
     /**
      * @return string[]
      */
-    public static function ns(): array
+    public function ns(): array
     {
         return [
             'http://jabber.org/protocol/disco#info',
@@ -685,41 +705,35 @@ END
         ];
     }
 
-    /**
-     * @param XMPPConnectionManager $XMPPConnectionManager
-     */
-    public static function XMPPConnectionManager(XMPPConnectionManager $XMPPConnectionManager): void
-    {
-        self::$XMPPConnectionManager = $XMPPConnectionManager;
-    }
 
     /**
      * @param bool $reload
      * @return bool
      */
-    static function isSupported(bool $reload = false): bool
+    function isSupported(bool $reload = false): bool
     {
-        if ($reload || !isset(self::$isSupported)) {
-            $xml = "<iq type='get' id='" . uniqid(rand(), true) .
+        if ($reload || !isset($this->isSupported)) {
+            $xml = "<iq type='get' id='" . md5(uniqid(rand(), true)) .
                 "'><query xmlns='http://jabber.org/protocol/disco#info'></query></iq>";
-            self::$XMPPConnectionManager->rawSend($xml);
-            XMPP_XML::parse(self::$XMPPConnectionManager->XMPPServer->getResponse());
-            array_walk(self::$XMPP_NS,
+            $this->connection->write($xml);
+            XMPP_XML::parse($this->connection->getResponse());
+            array_walk($this->XMPP_NS,
                 function (&$item) {
                     $item['support'] = XMPP_XML::hasNS($item['name']);
                 }
             );
-            self::$isSupported = (XMPP_XML::hasNS(self::ns()[0]) && XMPP_XML::hasNS(self::ns()[1]));
+            $this->isSupported = (XMPP_XML::hasNS($this->ns()[0]) && XMPP_XML::hasNS($this->ns()[1]));
         }
-        return self::$isSupported;
+        return $this->isSupported;
     }
 
 
-    public static function checkNS(array $ns, bool $recheck=false, string $xml=''):bool {
+    public function checkNS(array $ns, bool $recheck=false, string $xml=''): bool
+    {
         if ($recheck) {
-            self::$XMPPConnectionManager->rawSend($xml);
-            XMPP_XML::parse(self::$XMPPConnectionManager->XMPPServer->getResponse());
-            array_walk(self::$XMPP_NS,
+            $this->connection->write($xml);
+            XMPP_XML::parse($this->connection->getResponse());
+            array_walk($this->XMPP_NS,
                 function (&$item) {
                     $item['support'] = XMPP_XML::hasNS($item['name']);
                 }
@@ -727,33 +741,39 @@ END
         }
         $res=[];
         foreach ($ns as $value){
-            $search = array_search($value, array_column(self::$XMPP_NS, 'name'));
+            $search = array_search($value, array_column($this->XMPP_NS, 'name'));
             if( $search !== false) {
-                $res[] = self::$XMPP_NS[$search]['support'];
+                $res[] = $this->XMPP_NS[$search]['support'];
             }
         }
         return (count($ns) == count($res) && !in_array(false, $res));
     }
 
-    public static function getGeneral(bool $reload = false): array
+    public function getGeneral(bool $reload = false): array
     {
-        if ($reload || !isset(self::$generalSupport)) {
+        if ($reload || !isset($this->generalSupport)) {
 
-            $from = self::$XMPPConnectionManager->jid ? "from='" . self::$XMPPConnectionManager->jid . "'" : '';
-            $to = "to='" . self::$XMPPConnectionManager->host . "'";
-            $xml = "<iq $from $to type='get' id='" . uniqid(rand(), true) .
+            $from = "from='" . $this->connection->getJid()."'";
+            $to = "to='" . $this->connection->getHost() . "'";
+            $xml = "<iq $from $to type='get' id='" . md5(uniqid(rand(), true)) .
                 "'><query xmlns='http://jabber.org/protocol/disco#info'></query></iq>";
-            self::$XMPPConnectionManager->rawSend($xml);
-            XMPP_XML::parse(self::$XMPPConnectionManager->XMPPServer->getResponse());
-            array_walk(self::$XMPP_NS,
+            $this->connection->write($xml);
+            XMPP_XML::parse($this->connection->getResponse());
+            array_walk($this->XMPP_NS,
                 function (&$item) {
                     $item['support'] = XMPP_XML::hasNS($item['name']);
                 }
             );
             foreach (XMPP_XML::$input->getElementsByTagName('feature') as $element) {
-                self::$generalSupport[$element->getAttribute('var')] = true;
+                $this->generalSupport[$element->getAttribute('var')] = true;
             }
         }
-        return self::$generalSupport;
+        return $this->generalSupport;
     }
+
+    public function onBeforeWrite(string $xml) {}
+
+    public function onAfterWrite(string $xml) {}
+
+    public function onRead(string $response) {}
 }

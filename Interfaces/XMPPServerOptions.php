@@ -1,7 +1,7 @@
 <?php
-namespace MN\XMPP\Interfaces;
+namespace PhpPush\XMPP\Interfaces;
 
-interface XMPPServerOptions
+interface XMPPServerOptions extends LaravelXMPPServerListener
 {
     /**
      * @return string
@@ -22,20 +22,4 @@ interface XMPPServerOptions
      * @return array
      */
     function socketHeader(): array;
-
-    /**
-     * @return mixed
-     */
-    function onConnect(): mixed;
-
-    /**
-     * @return mixed
-     */
-    function onDisconnect(): mixed;
-
-    /**
-     * @param array $error
-     * @return mixed
-     */
-    function onError(array $error): mixed;
 }

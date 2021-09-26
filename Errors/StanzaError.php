@@ -1,7 +1,9 @@
 <?php
 declare(strict_types=1);
 
-namespace MN\XMPP\Errors;
+namespace PhpPush\XMPP\Errors;
+
+use Exception;
 
 final class StanzaError
 {

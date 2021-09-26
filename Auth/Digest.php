@@ -1,42 +1,49 @@
 <?php
-namespace MN\XMPP\Auth;
+namespace PhpPush\XMPP\Auth;
+
+use PhpPush\XMPP\Core\LaravelXMPPConnectionManager;
+use PhpPush\XMPP\Helpers\Functions;
+use PhpPush\XMPP\Helpers\XMPP_XML;
+use PhpPush\XMPP\Interfaces\XMPPAuth;
 
 class Digest implements XMPPAuth {
-    private static XMPPConnectionManager $XMPPConnectionManager;
-    private static string $challenge='';
-    private static string $service='xmpp';
+    private LaravelXMPPConnectionManager $connection;
+    private string $challenge='';
+    private string $service='xmpp';
     private static ?Digest $instance = null;
 
     /**
      * gets the instance via lazy initialization (created on first usage)
+     * @param LaravelXMPPConnectionManager $connection
+     * @return Digest
      */
-    public static function attach(XMPPConnectionManager $XMPPConnectionManager): Digest
+    public static function attach(LaravelXMPPConnectionManager $connection): Digest
     {
         if (Digest::$instance === null) {
-            Digest::$instance = new Digest($XMPPConnectionManager);
+            Digest::$instance = new Digest($connection);
         }
         return Digest::$instance;
     }
-    private function __construct(XMPPConnectionManager $XMPPConnectionManager) {
-        self::$XMPPConnectionManager = $XMPPConnectionManager;
+    private function __construct(LaravelXMPPConnectionManager $connection) {
+        $this->connection = $connection;
     }
     function auth(string $method=''): bool
     {
         //step-1: send request
         $xml = "<auth xmlns='urn:ietf:params:xml:ns:xmpp-sasl' mechanism='DIGEST-MD5' />";
-        self::$XMPPConnectionManager->XMPPServer->write($xml);
+        $this->connection->write($xml);
         //step-2: receive challenge
-        $challengeBase64 = strip_tags(self::$XMPPConnectionManager->XMPPServer->getResponse());
-        self::$challenge = base64_decode($challengeBase64);
+        $challengeBase64 = strip_tags($this->connection->getResponse());
+        $this->challenge = base64_decode($challengeBase64);
         //step-3: sent first response
         $respond = "<response xmlns='urn:ietf:params:xml:ns:xmpp-sasl'>".$this->encodedCredentials()."</response>";
-        self::$XMPPConnectionManager->XMPPServer->write($respond);
+        $this->connection->write($respond);
         //step-3: sent second response
-        if (XMPP_XML::parse(self::$XMPPConnectionManager->XMPPServer->getResponse())->exist('challenge')) {
-            self::$XMPPConnectionManager->XMPPServer->write("<response xmlns='urn:ietf:params:xml:ns:xmpp-sasl'/>");
+        if (XMPP_XML::parse($this->connection->getResponse())->exist('challenge')) {
+            $this->connection->write("<response xmlns='urn:ietf:params:xml:ns:xmpp-sasl'/>");
             //todo: when authzid applied, <failure xmlns='urn:ietf:params:xml:ns:xmpp-sasl'><not-authorized/><text xml:lang='en'>Nodeprep failed</text></failure>
         }
-        if (XMPP_XML::parse(self::$XMPPConnectionManager->XMPPServer->getResponse())->exist('success')) {
+        if (XMPP_XML::parse($this->connection->getResponse())->exist('success')) {
             return true;
         }
         return false;
@@ -46,6 +53,7 @@ class Digest implements XMPPAuth {
         $credentials = $this->getResponse();
         return htmlspecialchars(base64_encode($credentials), ENT_XML1, 'utf-8');
     }
+
     /**
      * Provides the (main) client response for DIGEST-MD5
      * requires a few extra parameters than the other
@@ -57,25 +65,25 @@ class Digest implements XMPPAuth {
      */
     private function getResponse($authzid = '')
     {
-        $challenge = $this->parseChallenge(self::$challenge);
+        $challenge = $this->parseChallenge($this->challenge);
         $authzid_string = '';
         if ($authzid != '') {
             $authzid_string = ',authzid="' . $authzid . '"';
         }
 
         if (!empty($challenge)) {
-            $cnonce         = $this->getCnonce();
-            $digest_uri     = sprintf('%s/%s', self::$service, self::$XMPPConnectionManager->host);
+            $cnonce         = Functions::getCnonce();
+            $digest_uri     = sprintf('%s/%s', $this->service, $this->connection->getHost());
             $response_value = $this->getResponseValue($challenge['realm'], $challenge['nonce'], $cnonce, $digest_uri, $authzid);
 
             if ($challenge['realm']) {
                 return sprintf('username="%s",realm="%s"' . $authzid_string  .
-                    ',nonce="%s",cnonce="%s",nc=00000001,qop=auth,digest-uri="%s",response=%s,maxbuf=%d', self::$XMPPConnectionManager->user, $challenge['realm'], $challenge['nonce'], $cnonce, $digest_uri, $response_value, $challenge['maxbuf']);
+                    ',nonce="%s",cnonce="%s",nc=00000001,qop=auth,digest-uri="%s",response=%s,maxbuf=%d', $this->connection->getUser(), $challenge['realm'], $challenge['nonce'], $cnonce, $digest_uri, $response_value, $challenge['maxbuf']);
             } else {
-                return sprintf('username="%s"' . $authzid_string  . ',nonce="%s",cnonce="%s",nc=00000001,qop=auth,digest-uri="%s",response=%s,maxbuf=%d', self::$XMPPConnectionManager->user, $challenge['nonce'], $cnonce, $digest_uri, $response_value, $challenge['maxbuf']);
+                return sprintf('username="%s"' . $authzid_string  . ',nonce="%s",cnonce="%s",nc=00000001,qop=auth,digest-uri="%s",response=%s,maxbuf=%d', $this->connection->getUser(), $challenge['nonce'], $cnonce, $digest_uri, $response_value, $challenge['maxbuf']);
             }
         } else {
-            throw new Auth_SASL_Exception('Invalid digest challenge');
+            //todo: throw error
         }
     }
 
@@ -153,35 +161,11 @@ class Digest implements XMPPAuth {
     private function getResponseValue($realm, $nonce, $cnonce, $digest_uri, $authzid = '')
     {
         if ($authzid == '') {
-            $A1 = sprintf('%s:%s:%s', pack('H32', md5(sprintf('%s:%s:%s', self::$XMPPConnectionManager->user, $realm, self::$XMPPConnectionManager->XMPPUser->getPassword()))), $nonce, $cnonce);
+            $A1 = sprintf('%s:%s:%s', pack('H32', md5(sprintf('%s:%s:%s', $this->connection->getUser(), $realm, $this->connection->getPassword()))), $nonce, $cnonce);
         } else {
-            $A1 = sprintf('%s:%s:%s:%s', pack('H32', md5(sprintf('%s:%s:%s', self::$XMPPConnectionManager->user, $realm, self::$XMPPConnectionManager->XMPPUser->getPassword()))), $nonce, $cnonce, $authzid);
+            $A1 = sprintf('%s:%s:%s:%s', pack('H32', md5(sprintf('%s:%s:%s', $this->connection->getUser(), $realm, $this->connection->getPassword()))), $nonce, $cnonce, $authzid);
         }
         $A2 = 'AUTHENTICATE:' . $digest_uri;
         return md5(sprintf('%s:%s:00000001:%s:auth:%s', md5($A1), $nonce, $cnonce, md5($A2)));
-    }
-
-    /**
-     * Creates the client nonce for the response
-     *
-     * @return string  The cnonce value
-     * @access private
-     */
-    private function getCnonce(): string
-    {
-        if (file_exists('/dev/urandom') && $fd = fopen('/dev/urandom', 'r')) {
-            return base64_encode(fread($fd, 32));
-
-        } elseif (file_exists('/dev/random') && $fd = fopen('/dev/random', 'r')) {
-            return base64_encode(fread($fd, 32));
-
-        } else {
-            $str = '';
-            for ($i=0; $i<32; $i++) {
-                $str .= chr(mt_rand(0, 255));
-            }
-
-            return base64_encode($str);
-        }
     }
 }

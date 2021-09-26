@@ -1,5 +1,7 @@
 <?php
-namespace MN\XMPP\Helpers;
+namespace PhpPush\XMPP\Helpers;
+
+use DOMDocument;
 
 class XMPP_XML
 {
