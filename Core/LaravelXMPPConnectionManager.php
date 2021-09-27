@@ -38,6 +38,7 @@
 
 namespace PhpPush\XMPP\Core;
 
+use Cache;
 use Exception;
 use PhpPush\XMPP\Errors\XMPPError;
 use PhpPush\XMPP\Helpers\XMPP_XML;
@@ -76,7 +77,7 @@ final class LaravelXMPPConnectionManager
         if (!$this->socket) {
             $this->getServerListener()->onError([$ec, $em]);
         }
-        stream_set_timeout($this->socket, 0, 150000);
+        stream_set_timeout($this->socket, 0, 5000);
         $this->handshake();
     }
 
@@ -84,7 +85,7 @@ final class LaravelXMPPConnectionManager
      * @param string $xml
      * @return bool
      */
-    public function write(string $xml): bool
+    public function write(string $xml, bool $read = true): bool
     {
         try {
             if ($this->authenticated) $this->extension->onBeforeWrite($xml);
@@ -95,7 +96,11 @@ final class LaravelXMPPConnectionManager
             return false;
         }
         $this->getServerListener()->onWrite($xml);
-        $this->read();
+
+        if ($read) {
+            while ($this->read() == false){}
+        }
+
         return true;
     }
 
@@ -164,7 +169,20 @@ final class LaravelXMPPConnectionManager
 
     public function listen() {
         while ($this->socket) {
-            $this->read();
+            $i=0;
+            if (Cache::has('xmpp-write-data'.$i)) {
+                while (true){
+                    $data = Cache::pull('xmpp-write-data'.$i);
+                    if ($data == null) {
+                        break;
+                    } else {
+                        $this->write($data);
+                        $i++;
+                    }
+                }
+            } else {
+                $this->read();
+            }
         }
         die("Socket disconnected");
     }

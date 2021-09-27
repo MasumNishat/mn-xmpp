@@ -36,46 +36,33 @@
  *
  */
 
-namespace PhpPush\XMPP\Laravel\Commands;
+namespace PhpPush\XMPP\Core;
 
-use Cache;
-use Illuminate\Console\Command;
-use PhpPush\XMPP\Core\LaravelXMPPConnectionManager;
+use Illuminate\Support\Facades\Cache;
 
-class phpPush extends Command
-{
-    /**
-     * The name and signature of the console command.
-     *
-     * @var string
-     */
-    protected $signature = 'phpPush:connect';
+class XMPPSend{
+    private static ?XMPPSend $instance = null;
 
     /**
-     * The console command description.
-     *
-     * @var string
+     * gets the instance via lazy initialization (created on first usage)
      */
-    protected $description = 'Connect admin user with XMPP server and listen incoming';
-
-    /**
-     * Create a new command instance.
-     *
-     * @return void
-     */
-    public function __construct()
+    public static function getInstance(): XMPPSend
     {
-        parent::__construct();
+        if (XMPPSend::$instance === null) {
+            XMPPSend::$instance = new XMPPSend();
+        }
+        return XMPPSend::$instance;
     }
 
-    /**
-     * Execute the console command.
-     *
-     * @return int
-     */
-    public function handle(LaravelXMPPConnectionManager $connection)
-    {
-        $connection->listen();
-        return 0;
+    public function send(string $data) {
+        $i = 0;
+         while (true){
+             if (Cache::has('xmpp-write-data'.$i)) {
+                 $i++;
+             } else {
+                 Cache::put('xmpp-write-data'.$i, $data, 2);
+                 break;
+             }
+         }
     }
 }
