@@ -15,6 +15,13 @@
     "require": {
         "php": "^8.0"
     },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "PhpPush\\XMPP\\Laravel\\LaravelServiceProvider"
+            ]
+        }
+    },
     "autoload": {
         "psr-4": {
             "PhpPush\\XMPP\\Auth\\": "Auth/",
