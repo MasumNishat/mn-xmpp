@@ -30,7 +30,7 @@ final class StreamError
     public function check(string $responseXML): StreamError
     {
         $this->lastError = [];
-        preg_match('/<stream:error>(\s+|)<(?P<error>[\W\w]+)(\s+)xmlns=\'urn:ietf:params:xml:ns:xmpp-streams\'\/>(.*)<\/stream:error>/', $responseXML, $m);
+        preg_match('/<stream:error>(\s+|)<(?P<error>[\W\w]+)(\s+)xmlns=\'urn:ietf:params:xml:ns:xmpp-streams\'\/>(.*)<\/stream:error>/s', $responseXML, $m);
         if (isset($m['error'])) {
             $this->lastError = [
                 'type' => 'stream-level error',

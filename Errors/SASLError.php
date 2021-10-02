@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace PhpPush\XMPP\Errors;
 
 use Exception;
+use PhpPush\XMPP\Core\XMPPSend;
 
 final class SASLError
 {
@@ -29,13 +30,13 @@ final class SASLError
     public function check(string $responseXML): SASLError
     {
         $this->lastError = [];
-        preg_match('/<failure(\s+)xmlns=\'urn:ietf:params:xml:ns:xmpp-sasl\'>(\s+|)<(?P<error>[\W\w]+)\/>/', $responseXML, $m);
+        preg_match('/<failure(\s+)xmlns=\'urn:ietf:params:xml:ns:xmpp-sasl\'>(\s+|)<(?P<error>[\W\w]+)\/>/s', $responseXML, $m);
         if (isset($m['error'])) {
             $this->lastError = [
                 'type' => 'SASL error',
                 'error' => $m['error'],
                 'des' => html_entity_decode(strip_tags($responseXML), ENT_QUOTES | ENT_HTML5),
-                'signal' => ''
+                'signal' => 'retry'
             ];
         }
         return  $this;

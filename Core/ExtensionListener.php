@@ -3,6 +3,7 @@
 namespace PhpPush\XMPP\Core;
 
 use PhpPush\XMPP\Interfaces\XMPPExtension;
+use PhpPush\XMPP\Laravel\DataManager;
 
 final class ExtensionListener
 {
@@ -38,7 +39,9 @@ final class ExtensionListener
 
     public function onRead(string $response)
     {
-        array_walk($this->extensions, fn($item)=> $item->onRead($response));
+        foreach ($this->extensions as $key=>$extension){
+            $extension->onRead($response);
+        }
     }
 
     /**
@@ -85,8 +88,12 @@ final class ExtensionListener
     private function load(LaravelXMPPConnectionManager $connection): void
     {
         foreach ($connection->getExtensions() as $extension) {
+
             if ($this->isValidExtension($extension[0])) {
                 $this->extensions[$extension[0]] = $extension[0]::getInstance()->connect($connection);
+                if ($this->extensions[$extension[0]]) {
+                    DataManager::getInstance()->setData(DataManager::LOADED_EXTENSIONS, array_keys($this->extensions), 0, true);
+                }
                 foreach ($extension[1] as $key => $value) {
                     if (method_exists($extension[0], $key)) {
                         $this->extensions[$extension[0]]->$key($value);

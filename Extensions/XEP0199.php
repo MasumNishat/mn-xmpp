@@ -5,11 +5,11 @@ use PhpPush\XMPP\Core\ExtensionListener;
 use PhpPush\XMPP\Core\LaravelXMPPConnectionManager;
 use PhpPush\XMPP\Interfaces\XMPPExtension;
 
-class XEP0199 implements XMPPExtension
+final class XEP0199 implements XMPPExtension
 {
     private LaravelXMPPConnectionManager $connection;
     private static ?XEP0199 $instance = null;
-    private string $lastServerConnectedAt = '';
+    private int $lastServerConnectedAt = 0;
     private bool $isSupported;
     public bool $c2c_ping = false;
     public bool $c2s_ping = false;
@@ -31,11 +31,12 @@ class XEP0199 implements XMPPExtension
         return XEP0199::$instance;
     }
 
-    public function connect(LaravelXMPPConnectionManager $connection): ?XEP0199
+    public function connect(LaravelXMPPConnectionManager $connection): XEP0199 | bool
     {
         $this->connection = $connection;
         if (!self::isSupported(true)) {
             $this->connection->getServerListener()->onError(['warning', 'XEP0199 not supported by server']);
+            return false;
         }
         return $this::$instance;
     }
@@ -140,14 +141,17 @@ class XEP0199 implements XMPPExtension
     public function response(array $param)
     {
         $xml = "<iq from='$param[to]' to='$param[from]' id='$param[id]' type='result'/>";
-        $this->connection->write($xml);
+        $this->connection->write($xml, false);
     }
 
     public function onBeforeWrite(string $xml)
     {
         if ($this->c2s_ping) {
             if(empty($this->serverPingID)) {
-                if (time()-$this->lastServerConnectedAt>=$this->c2s_ping_interval) {
+                if ((time()-$this->lastServerConnectedAt)>=($this->c2s_ping_interval)) {
+                    var_dump($this->c2s_ping_interval);
+                    var_dump($this->lastServerConnectedAt);
+                    var_dump(time());
                     $this->pingServer();
                 }
             } elseif (time()-$this->serverPingID['time'] >= $this->c2s_ping_timeout) {
@@ -162,6 +166,9 @@ class XEP0199 implements XMPPExtension
     public function onRead(string $response)
     {
         $this->lastServerConnectedAt = time();
+        if (!empty($this->serverPingID) && str_contains($response, $this->serverPingID['id'])) {
+            $this->serverPingID = [];
+        }
         //check ping request
         preg_match_all(
             '/<iq
@@ -186,5 +193,14 @@ class XEP0199 implements XMPPExtension
                 'id' => $result['id'][0],
             ]);
         }
+    }
+    public function checkError(string $responseXML): bool
+    {
+        return false;
+    }
+
+    public function getLastError(): array
+    {
+        return [];
     }
 }

@@ -41,6 +41,10 @@ namespace PhpPush\XMPP\Laravel\Commands;
 use Cache;
 use Illuminate\Console\Command;
 use PhpPush\XMPP\Core\LaravelXMPPConnectionManager;
+use PhpPush\XMPP\Laravel\DataManager;
+use ReflectionException;
+use ReflectionFunction;
+use ReflectionMethod;
 
 class phpPush extends Command
 {
@@ -49,7 +53,10 @@ class phpPush extends Command
      *
      * @var string
      */
-    protected $signature = 'phpPush:connect';
+    protected $signature = 'phpPush:connect
+    {--R|register : Register a new user in configured host}
+    {--E|execute : Execute command on connected server}
+    {options?* : Any extension has UI namespace execution}';
 
     /**
      * The console command description.
@@ -69,13 +76,107 @@ class phpPush extends Command
     }
 
     /**
+     * @throws ReflectionException
+     */
+    function get_func_argNames($funcName) {
+        if (is_array($funcName)) {
+            $f = new ReflectionMethod($funcName[0], $funcName[1]);
+        } else {
+            $f = new ReflectionFunction($funcName);
+        }
+        $result = array();
+        foreach ($f->getParameters() as $param) {
+            $result[$param->name][0] = $param->getType()->getName();
+            try {
+                $result[$param->name][1] = $param->getDefaultValue();
+            } catch (ReflectionException $e) {
+                $result[$param->name][1] = '';
+            }
+
+        }
+        return $result;
+    }
+
+    /**
      * Execute the console command.
      *
      * @return int
+     * @throws ReflectionException
      */
-    public function handle(LaravelXMPPConnectionManager $connection)
+    public function handle()
     {
-        $connection->listen();
+        if ($this->option('register')) {
+            $conf = config('php-push-xmpp');
+            $conf['regReq'] = true;
+            $connection = LaravelXMPPConnectionManager::getInstance($conf);
+            $connection->register($this->getData(DataManager::getInstance()->getData(DataManager::REG_FIELDS)));
+        } elseif ($this->option('execute')){
+            $options = $this->arguments()['options'];
+            $extension = "PhpPush\\XMPP\\UI\\".$options[0];
+            if (class_exists($extension)) {
+                $app = $extension::getInstance();
+                if (isset($options[1]) && method_exists($app, $options[1])) {
+                    $params = $this->get_func_argNames([$extension, $options[1]]);
+                    print_r($params);
+                    foreach ($params as $param=>$type){
+                        switch ($type[0]) {
+                            case 'string':
+                                $data[] = $this->ask("$param?")?: $type[1];
+                                break;
+                            case 'bool':
+                                $data[] = $this->confirm("$param?") || ((is_bool($type[1]) && $type[1]));
+                        }
+                    }
+                    print_r(call_user_func_array([$app, $options[1]], $data));
+                } else {
+                    $this->newLine();
+                    $this->error("Method ($options[1]) not found in class (". "PhpPush\\XMPP\\UI\\".$extension. ") not found.");
+                    $this->newLine();
+                }
+            } else {
+                $this->newLine();
+                $this->error("Class (". "PhpPush\\XMPP\\UI\\".$extension. ") not found.");
+                $this->newLine();
+            }
+        } else {
+            $connection = LaravelXMPPConnectionManager::getInstance(config('php-push-xmpp'));
+            $connection->listen();
+        }
+
         return 0;
+    }
+
+    /**
+     * @param array $fields
+     * @return array
+     */
+    public function getData(array $fields): array
+    {
+        $ret = [];
+        if ($this->showRegIns($fields)) {
+            foreach ($fields as $key=>$field) {
+                if (trim($field) == '') {
+                    if (strtolower(trim($field)) == 'password') {
+                        $ret[$key] = $this->secret("$key?");
+                    } else {
+                        $ret[$key] = $this->ask("$key?");
+                    }
+
+                }
+            }
+        }
+        return $ret;
+    }
+
+    /**
+     * @param $fields
+     * @return bool
+     */
+    private function showRegIns($fields): bool
+    {
+        if (isset($fields['instructions']) && trim($fields['instructions']) != '') {
+            return $this->confirm("Instruction: $fields[instructions]\n Proceed?");
+        }
+        return true;
     }
 }

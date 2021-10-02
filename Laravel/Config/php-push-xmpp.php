@@ -1,6 +1,9 @@
 <?php
 
+use PhpPush\XMPP\Extensions\XEP0004;
 use PhpPush\XMPP\Extensions\XEP0030;
+use PhpPush\XMPP\Extensions\XEP0060;
+use PhpPush\XMPP\Extensions\XEP0077;
 use PhpPush\XMPP\Extensions\XEP0199;
 
 return [
@@ -31,19 +34,31 @@ return [
      */
     'extensions' => [
         [
-            XEP0030::class, //maximum extensions depend on this.
+            XEP0077::class, //@internal
             []
         ],
         [
-            XEP0199::class,
+            XEP0030::class, //@internal maximum extensions depend on this.
+            []
+        ],
+        [
+            XEP0199::class, //@internal
             [
                 'c2c_ping' => true,
                 'c2s_ping' => true,
-                'c2s_ping_interval' => 30, //in second
+                'c2s_ping_interval' => 300, //in second
                 'c2c_ping_interval' => 100, //in second
                 'c2s_ping_timeout' => 2, //in second
                 'c2c_ping_timeout' => 2, //in second
             ]
+        ],
+        [
+            XEP0004::class,
+            []
+        ],
+        [
+            XEP0060::class,
+            []
         ]
     ],
     'read-retry' => 3,

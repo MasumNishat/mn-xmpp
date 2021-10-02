@@ -39,11 +39,16 @@
 namespace PhpPush\XMPP\Core;
 
 use Cache;
+use DOMDocument;
 use Exception;
 use PhpPush\XMPP\Errors\XMPPError;
+use PhpPush\XMPP\Helpers\Functions;
 use PhpPush\XMPP\Helpers\XMPP_XML;
 use PhpPush\XMPP\Interfaces\LaravelXMPPClientListener;
 use PhpPush\XMPP\Interfaces\LaravelXMPPServerListener;
+use PhpPush\XMPP\Laravel\Commands\phpPush;
+use PhpPush\XMPP\Laravel\DataManager;
+use PhpPush\XMPP\UI\XEP0077;
 
 final class LaravelXMPPConnectionManager
 {
@@ -57,6 +62,7 @@ final class LaravelXMPPConnectionManager
     private string $jid = '';
     private string $resource = '';
     private ?ExtensionListener $extension;
+    public bool $regSupport = false;
 
     /**
      * gets the instance via lazy initialization (created on first usage)
@@ -77,7 +83,7 @@ final class LaravelXMPPConnectionManager
         if (!$this->socket) {
             $this->getServerListener()->onError([$ec, $em]);
         }
-        stream_set_timeout($this->socket, 0, 5000);
+        stream_set_timeout($this->socket, 0, 9000);
         $this->handshake();
     }
 
@@ -89,7 +95,10 @@ final class LaravelXMPPConnectionManager
     {
         try {
             if ($this->authenticated) $this->extension->onBeforeWrite($xml);
+            DataManager::getInstance()->setData(DataManager::SENT, '');
+            DataManager::getInstance()->setData(DataManager::RESPONSE, '');
             fwrite($this->socket, $xml);
+            DataManager::getInstance()->setData(DataManager::SENT, $xml);
             if ($this->authenticated) $this->extension->onAfterWrite($xml);
         } catch (Exception $e) {
             $this->getServerListener()->onError([$e->getCode(), $e->getMessage()]);
@@ -98,7 +107,8 @@ final class LaravelXMPPConnectionManager
         $this->getServerListener()->onWrite($xml);
 
         if ($read) {
-            while ($this->read() == false){}
+            while ($this->read() == false) {
+            }
         }
 
         return true;
@@ -121,13 +131,14 @@ final class LaravelXMPPConnectionManager
                 return false;
             }
         }
+        DataManager::getInstance()->setData(DataManager::RESPONSE, $this->response);
         if ($this->authenticated) {
+            $this->getClientListener()->onRead($this->response);
+            $this->extension->onRead($this->response);
             if (XMPPError::check($this->response)) {
                 $error = XMPPError::getLastError();
                 $this->getClientListener()->onError($error);
             }
-            $this->getClientListener()->onRead($this->response);
-            $this->extension->onRead($this->response);
             //check ping
             preg_match_all(
                 '/<iq
@@ -158,21 +169,33 @@ final class LaravelXMPPConnectionManager
                 }
             }
         } else {
+            $this->getServerListener()->onRead($this->response);
             if (XMPPError::check($this->response)) {
                 $error = XMPPError::getLastError();
                 $this->getServerListener()->onError($error);
+                var_dump($error);
+                //check signal
+                if ($error['signal'] == 'end') {
+                    $this->logout(true);
+                } elseif ($error['signal'] == 'retry') {
+                    if ($this->auth()) {
+                        $this->resourceBinding();
+                        $this->extension = ExtensionListener::getInstance()->connect($this);
+                        $this->authenticated = true;
+                    }
+                }
             }
-            $this->getServerListener()->onRead($this->response);
         }
         return true;
     }
 
-    public function listen() {
+    public function listen()
+    {
         while ($this->socket) {
-            $i=0;
-            if (Cache::has('xmpp-write-data'.$i)) {
-                while (true){
-                    $data = Cache::pull('xmpp-write-data'.$i);
+            $i = 0;
+            if (Cache::has('xmpp-write-data' . $i)) {
+                while (true) {
+                    $data = Cache::pull('xmpp-write-data' . $i);
                     if ($data == null) {
                         break;
                     } else {
@@ -187,12 +210,14 @@ final class LaravelXMPPConnectionManager
         die("Socket disconnected");
     }
 
-    public function logout(bool $force = false) {
+    public function logout(bool $force = false): void
+    {
         //rfc6120, section: 4.4
         if (!$force) {
             $this->write("</stream:stream>");
         }
         fclose($this->socket);
+        die("Shutting down");
     }
 
 
@@ -211,15 +236,17 @@ final class LaravelXMPPConnectionManager
     {
         if ($this->jid == '') {
             $this->setResource();
-            $this->jid =$this->config['admin-user']."@". $this->config['host']."/$this->resource";
+            $this->jid = $this->config['admin-user'] . "@" . $this->config['host'] . "/$this->resource";
         }
+        DataManager::getInstance()->setData(DataManager::USER_JID, $this->jid);
         return $this->jid;
     }
 
     private function setResource(): void
     {
         if ($this->resource == '') {
-            $this->resource = $this->config['resource']['prefix'].md5(uniqid("", true)).$this->config['resource']['suffix'];
+            $this->resource = $this->config['resource']['prefix'] . md5(uniqid("", true)) . $this->config['resource']['suffix'];
+            DataManager::getInstance()->setData(DataManager::USER_RESOURCE, $this->resource);
         }
     }
 
@@ -252,6 +279,7 @@ final class LaravelXMPPConnectionManager
      */
     public function getHost(): string
     {
+        DataManager::getInstance()->setData(DataManager::HOST, $this->config['host']);
         return $this->config['host'];
     }
 
@@ -260,6 +288,7 @@ final class LaravelXMPPConnectionManager
      */
     public function getUser(): string
     {
+        DataManager::getInstance()->setData(DataManager::USER, $this->config['admin-user']);
         return $this->config['admin-user'];
     }
 
@@ -276,6 +305,7 @@ final class LaravelXMPPConnectionManager
      */
     public function getProtocol(): string
     {
+        DataManager::getInstance()->setData(DataManager::PROTOCOL, $this->config['protocol']);
         return $this->config['protocol'];
     }
 
@@ -284,6 +314,7 @@ final class LaravelXMPPConnectionManager
      */
     public function getAuthType(): string
     {
+        DataManager::getInstance()->setData(DataManager::AUTH_TYPE, $this->config['port']);
         return strtoupper($this->config['auth-type']);
     }
 
@@ -295,6 +326,7 @@ final class LaravelXMPPConnectionManager
         if ($this->config['autodetect-port']) {
             //todo: autodetect from host srv record
         } else {
+            DataManager::getInstance()->setData(DataManager::PORT, $this->config['port']);
             return ($this->config['port'] + 0);
         }
     }
@@ -341,12 +373,34 @@ final class LaravelXMPPConnectionManager
                 version='1.0'>";
                 $this->write($xml3);
                 $this->authMethods = XMPP_XML::parse($this->response)->getAuthMethods();
-                if (empty($this->authMethods)) {
-                    $this->getServerListener()->onError(['No valid authentication method found']);
-                } elseif ($this->auth()) {
-                    $this->resourceBinding();
-                    $this->extension = ExtensionListener::getInstance()->connect($this);
-                    $this->authenticated = true;
+                DataManager::getInstance()->setData(DataManager::SUPPORTED_AUTH_METHODS, $this->authMethods, 0, true);
+                $doc = new DOMDocument();
+                libxml_use_internal_errors(true);
+                $doc->loadHTML($this->response);
+                $element = $doc->getElementsByTagName('register');
+                if ($element->length > 0) {
+                    foreach ($element[0]->attributes as $attribute){
+                        if ($attribute->name == 'xmlns' && $attribute->value == 'http://jabber.org/features/iq-register') {
+                            $this->regSupport = true;
+                        }
+                    }
+                }
+                if (isset($this->config['regReq']) && $this->config['regReq']) {
+                    if ($this->regSupport) {
+                        $xml = XEP0077::getInstance()->newRegXML();
+                        $this->write($xml);
+                        DataManager::getInstance()->setData(DataManager::REG_FIELDS, XEP0077::getInstance()->parseRegFields($this->response), 0, true);
+                    } else {
+                        $this->getServerListener()->onError(['Server does not support in band registration']);
+                    }
+                } else {
+                    if (empty($this->authMethods)) {
+                        $this->getServerListener()->onError(['No valid authentication method found']);
+                    } elseif ($this->auth()) {
+                        $this->resourceBinding();
+                        $this->extension = ExtensionListener::getInstance()->connect($this);
+                        $this->authenticated = true;
+                    }
                 }
             } elseif (XMPP_XML::parse($this->response)->exist('failure')) {
                 $this->getServerListener()->onError(['TLS connection failed']);
@@ -357,6 +411,25 @@ final class LaravelXMPPConnectionManager
         //todo: non tls connection to be handled
     }
 
+    public function register(array $fields){
+        if (empty($fields)) {
+            return;
+        }
+        $data = '';
+        foreach ($fields as $key=>$field) {
+            $data .= "<$key>$field</$key>";
+        }
+        $id = Functions::createID();
+        $xml = "<iq type='set' id='$id'>
+  <query xmlns='jabber:iq:register'>
+    $data
+  </query>
+</iq>";
+        $this->write($xml);
+        if (!XMPPError::check($this->response)) {
+            echo "\n\nRegistration successful.\nChange configuration with new credential and reconnect to continue.\n";
+        }
+    }
     /**
      * @return bool
      */
@@ -375,6 +448,7 @@ final class LaravelXMPPConnectionManager
         }
         return false;
     }
+
     private function resourceBinding()
     {
         $xml1 = "<?xml version='1.0' encoding='UTF-8'?><stream:stream

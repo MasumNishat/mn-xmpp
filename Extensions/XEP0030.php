@@ -26,7 +26,7 @@ final class XEP0030 implements XMPPExtension
     }
 
 
-    public function connect(LaravelXMPPConnectionManager $connection): ?XEP0030
+    public function connect(LaravelXMPPConnectionManager $connection): XEP0030
     {
         $this->connection = $connection;
         $this->XMPP_NS = json_decode(
@@ -673,7 +673,7 @@ END
             , true);
         if (!$this->isSupported(true)) {
             $this->connection->getServerListener()->onError(['error', 'XEP0030 not supported by server which is minimum XMPP server requirement']);
-            die("Shutting down");
+            $this->connection->logout();
         }
         return $this::$instance;
     }
@@ -776,4 +776,13 @@ END
     public function onAfterWrite(string $xml) {}
 
     public function onRead(string $response) {}
+    public function checkError(string $responseXML): bool
+    {
+        return false;
+    }
+
+    public function getLastError(): array
+    {
+        return [];
+    }
 }

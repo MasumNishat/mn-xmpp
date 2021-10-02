@@ -76,4 +76,12 @@ class Functions {
             return base64_encode($str);
         }
     }
+
+    /**
+     * @return string
+     */
+    public static function createID(): string
+    {
+        return md5(uniqid('', true));
+    }
 }

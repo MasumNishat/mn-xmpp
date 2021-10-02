@@ -6,6 +6,9 @@ use PhpPush\XMPP\Core\XMPPConnectionManager;
 
 interface XMPPExtension
 {
+    public static function getInstance(): XMPPExtension;
+    public function connect(LaravelXMPPConnectionManager $connection): XMPPExtension | bool;
+
     /**
      * @return string
      */
@@ -24,6 +27,9 @@ interface XMPPExtension
     public function onBeforeWrite(string $xml);
     public function onAfterWrite(string $xml);
     public function onRead(string $response);
-    public function connect(LaravelXMPPConnectionManager $connection): ?XMPPExtension;
-    public static function getInstance(): XMPPExtension;
+
+    public function checkError(string $responseXML): bool;
+    public function getLastError(): array;
+
+
 }

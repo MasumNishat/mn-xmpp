@@ -85,6 +85,7 @@ class Scram implements XMPPAuth {
             $outcome = base64_decode($outcomeBase64);
             if (!$this->processOutcome($outcome)) {
                 $this->connection->getClientListener()->onError(['Malformed negotiation']);
+                $this->connection->logout(true);
                 return false;
             }
             return true;

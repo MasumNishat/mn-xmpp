@@ -31,12 +31,12 @@ final class StanzaError
         $this->lastError = [];
         preg_match('/<(?P<stanza>(message|presence|iq))(.*)type=\'error\'(.*)>(.*)'.
             '<error(.*)type=\'(?P<type>(auth|cancel|continue|modify|wait))\'(.*)'.
-            '<(?P<error>[\W\w]+)(\s+)xmlns=\'urn:ietf:params:xml:ns:xmpp-stanzas\'\/>(.*)<\/(message|presence|iq)>/', $responseXML, $m);
+            '<(?P<error>[\W\w]+)(\s+)xmlns=\'urn:ietf:params:xml:ns:xmpp-stanzas\'\/>(.*)<\/(message|presence|iq)>/s', $responseXML, $m);
         if (isset($m['error'])) {
             $this->lastError = [
                 'type' => "Stanza($m[stanza]) error",
                 'error' => "$m[type]: $m[error]",
-                'des' => html_entity_decode(strip_tags($responseXML), ENT_QUOTES | ENT_HTML5),
+                'des' => trim(html_entity_decode(strip_tags($responseXML), ENT_QUOTES | ENT_HTML5)),
                 'signal' => ''
             ];
         }
